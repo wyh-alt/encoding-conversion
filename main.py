@@ -37,6 +37,7 @@ class ConvertWorker(QThread):
     def run(self):
         success_count = 0
         ascii_count = 0
+        ascii_forced_count = 0
         skipped_count = 0
         fail_files = []
 
@@ -48,6 +49,9 @@ class ConvertWorker(QThread):
                 status, msg = self.convert_file(file, self.input_path, Path(self.output_dir), self.target_encoding)
                 if status == "ascii":
                     ascii_count += 1
+                    success_count += 1
+                elif status == "ascii_forced_utf8":
+                    ascii_forced_count += 1
                     success_count += 1
                 elif status == "skipped":
                     skipped_count += 1
@@ -62,6 +66,8 @@ class ConvertWorker(QThread):
         summary = f"处理完成！\n\n成功转换：{success_count} 个文件"
         if ascii_count > 0:
             summary += f"\n（其中 {ascii_count} 个为纯英文/数字文件，转换前后二进制一致）"
+        if ascii_forced_count > 0:
+            summary += f"\n（其中 {ascii_forced_count} 个纯英文/数字文件已强制写为 UTF-8 BOM 以便外部工具识别为 UTF-8）"
         
         if skipped_count > 0:
             summary += f"\n\n跳过 {skipped_count} 个文件（因包含目标编码不支持的字符，已保留原编码）"
@@ -129,8 +135,12 @@ class ConvertWorker(QThread):
         # 2. 检测目标编码是否支持
         try:
             content.encode(target_encoding)
-            final_encoding = target_encoding
-            status = "ascii" if is_ascii else "converted"
+            if is_ascii and target_encoding == "utf-8":
+                final_encoding = "utf-8-sig"
+                status = "ascii_forced_utf8"
+            else:
+                final_encoding = target_encoding
+                status = "ascii" if is_ascii else "converted"
         except UnicodeEncodeError:
             # 不支持则保留原编码
             final_encoding = src_encoding
